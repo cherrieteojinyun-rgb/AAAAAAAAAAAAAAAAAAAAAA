@@ -69,6 +69,7 @@ def review(
 
     item_cards = []
     for index, item in enumerate(items):
+        fields = [item["description"], item["amount"], item["category"]]
         item_cards.append(
             card(
                 ft.Column(
@@ -78,9 +79,7 @@ def review(
                             size=15,
                             weight=ft.FontWeight.BOLD,
                         ),
-                        item["description"],
-                        item["amount"],
-                        item["category"],
+                        *fields,
                     ],
                     spacing=10,
                 ),
@@ -127,11 +126,7 @@ def review(
             card(
                 ft.Column(
                     [
-                        label(
-                            "Butiran transaksi",
-                            size=16,
-                            weight=ft.FontWeight.BOLD,
-                        ),
+                        label("Butiran transaksi", size=16, weight=ft.FontWeight.BOLD),
                         *item_cards,
                         message,
                     ],
@@ -161,11 +156,6 @@ def review(
                 ],
                 wrap=True,
                 spacing=8,
-            ),
-        ],
-        spacing=13,
-        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-    )
             ),
         ],
         spacing=13,
