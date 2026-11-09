@@ -485,37 +485,85 @@ async def main(page: ft.Page):
             state["camera_status"].color = ft.Colors.ERROR
             state["camera_status"].update()
 
-    def add_receipt_item():
-        existing_description = (state.get("receipt_description").value or "") if state.get("receipt_description") else ""
-        existing_amount = (state.get("receipt_amount").value or "") if state.get("receipt_amount") else ""
-        existing_category = (state.get("receipt_category").value or "Makanan") if state.get("receipt_category") else "Makanan"
-
-        item_description = ft.TextField(label="Apa yang dibeli?", value=existing_description, hint_text="cth. makan tengah hari", border_radius=14)
-        item_amount = ft.TextField(label="Jumlah (RM)", value=existing_amount, prefix=ft.Text("RM "), keyboard_type=ft.KeyboardType.NUMBER, border_radius=14)
-        item_category = ft.Dropdown(
-            value=existing_category,
-            label="Kategori",
-            options=[ft.DropdownOption(text=item) for item in CATEGORY_OPTIONS],
-            border_radius=14,
-        )
-        error = ft.Text("", size=12, color=ft.Colors.ERROR)
-
-        async def save_item():
-            description = (item_description.value or "").strip()
-            amount = number(item_amount.value)
-            if not description or amount is None or amount <= 0:
-                error.value = "Masukkan keterangan dan jumlah yang melebihi RM 0."
-                page.update()
-                return
-            category = CATEGORY_OPTIONS.get(item_category.value, "Other")
-            state.setdefault("receipt_items", []).append({
-                "description": description,
-                "category": category,
-                "amount": amount,
-            })
-            page.pop_dialog()
+    async def capture_photo():
+        if not state["camera_ready"]:
+            state["camera_status"].value = "Benarkan akses kamera dan tunggu pratonton bermula."
+            state["camera_status"].update()
+            return
+        try:
+            state["receipt_photo"] = await state["camera"].take_picture()
+            await state["camera"].pause_preview()
+            state["receipt_description"] = ft.TextField(
+                label="Apa yang dibeli?",
+                hint_text="cth. makan tengah hari",
+                border_radius=14,
+            )
+            state["receipt_amount"] = ft.TextField(
+                label="Jumlah (RM)",
+                prefix=ft.Text("RM "),
+                keyboard_type=ft.KeyboardType.NUMBER,
+                border_radius=14,
+            )
+            state["receipt_category"] = ft.Dropdown(
+                value="Makanan",
+                label="Kategori",
+                options=[
+                    ft.DropdownOption(text=item)
+                    for item in CATEGORY_OPTIONS
+                ],
+                border_radius=14,
+            )
+            state["receipt_message"] = ft.Text("", size=12, color=ft.Colors.ERROR)
+            state["route"] = "receipt_review"
             render()
+        except Exception as error:
+            log.warning("Camera capture failed: %s", error)
+            state["camera_status"].value = "Gambar tidak dapat diambil. Cuba lagi atau semak kebenaran kamera."
+            state["camera_status"].color = ft.Colors.ERROR
+            state["camera_status"].update()
 
+    async def close_scanner():
+        camera = state.get("camera")
+        if camera and state.get("camera_ready"):
+            try:
+                await camera.pause_preview()
+            except Exception:
+                pass
+        state["camera"] = None
+        state["camera_ready"] = False
+        state["route"] = "app"
+        state["tab"] = "Transactions"
+        render()
+
+    async def retake_receipt():
+        state["route"] = "scanner"
+        render()
+        try:
+            await state["camera"].resume_preview()
+        except Exception as error:
+            log.warning("Camera preview could not resume: %s", error)
+
+    async def save_receipt():
+        description = (state["receipt_description"].value or "").strip()
+        amount = number(state["receipt_amount"].value)
+        if not description or amount is None or amount <= 0:
+            state["receipt_message"].value = "Masukkan keterangan dan jumlah yang melebihi RM 0."
+            page.update()
+            return
+        category = CATEGORY_OPTIONS.get(state["receipt_category"].value, "Other")
+        state["transactions"].insert(0, {
+            "description": description,
+            "category": category,
+            "date": "Sebentar tadi · imbasan",
+            "amount": amount,
+        })
+        await persist_transactions()
+        state["camera"] = None
+        state["camera_ready"] = False
+        state["receipt_photo"] = None
+        state["route"] = "app"
+        state["tab"] = "Transactions"
+        render()
         page.show_dialog(ft.AlertDialog(
             modal=True,
             title=ft.Text("Tambah butiran transaksi"),
