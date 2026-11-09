@@ -419,62 +419,56 @@ async def main(page: ft.Page):
             modal=True,
             title=ft.Text("Semakan ringkas"),
             content=ft.Text(text),
-            actions=[ft.TextButton("Faham", on_click=lambda e: page.pop_dialog())],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-        page.show_dialog(dialog)
-
     def open_scanner():
-        state["route"] = "scanner"
-       camera = fcam.Camera(
-    width=content_width() - 36,
-    height=320,
-    preview_enabled=True,
-)
+        camera = fcam.Camera(
+            width=content_width() - 36,
+            height=320,
+            preview_enabled=True,
+        )
         state["camera"] = camera
         state["camera_ready"] = False
-        state["camera_status"] = ft.Text("Meminta akses kamera…", size=13, color=MUTED)
+        state["camera_status"] = ft.Text(
+            "Meminta akses kamera…", size=13, color=MUTED
+        )
         state["route"] = "scanner"
         render()
         asyncio.create_task(initialize_camera(camera))
 
+    async def initialize_camera(camera):
+        try:
+            cameras = await camera.get_available_cameras()
+            if not cameras:
+                raise RuntimeError("No cameras detected.")
 
-async def initialize_camera(camera):
-    try:
-        cameras = await camera.get_available_cameras()
+            back_camera = next(
+                (
+                    item for item in cameras
+                    if item.lens_direction == fcam.CameraLensDirection.BACK
+                ),
+                cameras[0],
+            )
 
-        if not cameras:
-            raise RuntimeError("No cameras detected.")
+            await camera.initialize(
+                description=back_camera,
+                resolution_preset=fcam.ResolutionPreset.MEDIUM,
+                enable_audio=False,
+            )
 
-        back_camera = next(
-            (
-                item for item in cameras
-                if item.lens_direction == fcam.CameraLensDirection.BACK
-            ),
-            cameras[0],
-        )
+            state["camera_ready"] = True
+            state["camera_status"].value = (
+                "Kamera sedia. Letakkan resit di tengah dan ambil gambar."
+            )
+            state["camera_status"].color = ft.Colors.GREEN_700
+            state["camera_status"].update()
 
-        await camera.initialize(
-            description=back_camera,
-            resolution_preset=fcam.ResolutionPreset.MEDIUM,
-            enable_audio=False,
-        )
-
-        state["camera_ready"] = True
-        state["camera_status"].value = (
-            "Kamera sedia. Letakkan resit di tengah dan ambil gambar."
-        )
-        state["camera_status"].color = ft.Colors.GREEN_700
-        state["camera_status"].update()
-
-    except Exception as error:
-        log.exception("Camera setup failed")
-        state["camera_ready"] = False
-        state["camera_status"].value = (
-            f"Kamera gagal: {type(error).__name__}: {error}"
-        )
-        state["camera_status"].color = ft.Colors.ERROR
-        state["camera_status"].update()
+        except Exception as error:
+            log.exception("Camera setup failed")
+            state["camera_ready"] = False
+            state["camera_status"].value = (
+                f"Kamera gagal: {type(error).__name__}: {error}"
+            )
+            state["camera_status"].color = ft.Colors.ERROR
+            state["camera_status"].update()
 
     async def capture_photo():
         if not state["camera_ready"]:
