@@ -438,12 +438,13 @@ async def main(page: ft.Page):
         render()
         asyncio.create_task(initialize_camera(camera))
 
+
 async def initialize_camera(camera):
     try:
         cameras = await camera.get_available_cameras()
 
         if not cameras:
-            raise RuntimeError("No cameras detected by the browser.")
+            raise RuntimeError("No cameras detected.")
 
         back_camera = next(
             (
@@ -454,8 +455,9 @@ async def initialize_camera(camera):
         )
 
         await camera.initialize(
-            back_camera,
+            description=back_camera,
             resolution_preset=fcam.ResolutionPreset.MEDIUM,
+            enable_audio=False,
         )
 
         state["camera_ready"] = True
@@ -467,10 +469,9 @@ async def initialize_camera(camera):
 
     except Exception as error:
         log.exception("Camera setup failed")
-
         state["camera_ready"] = False
         state["camera_status"].value = (
-            f"Kamera gagal dimulakan: {type(error).__name__}: {error}"
+            f"Kamera gagal: {type(error).__name__}: {error}"
         )
         state["camera_status"].color = ft.Colors.ERROR
         state["camera_status"].update()
