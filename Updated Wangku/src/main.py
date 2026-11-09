@@ -72,6 +72,8 @@ async def main(page: ft.Page):
         "receipt_description": None,
         "receipt_amount": None,
         "receipt_category": None,
+        "receipt_items": [],
+        "receipt_busy": False,
         "receipt_message": None,
         "onboarding": {"allowance": "", "frequency": "Weekly", "savings_target": "", "saved": "0", "dream_item": "", "dream_price": "", "months": "3"},
     }
@@ -119,7 +121,7 @@ async def main(page: ft.Page):
                 on_click=lambda e, chosen=tab: select_tab(chosen),
                 expand=True,
             ))
-        return ft.Container(content=ft.Row(buttons, alignment=ft.MainAxisAlignment.SPACE_AROUND), padding=ft.Padding.symmetric(vertical=5), bgcolor=ft.Colors.WHITE, border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.BLUE_GREY_50)))
+        return ft.Container(content=ft.Row(buttons, alignment=ft.MainAxisAlignment.SPACE_AROUND), padding=ft.Padding.symmetric(vertical=5), bgcolor=ft.Colors.WHITE, border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.BLACK12)))
 
     def page_wrapper(view, width=None, include_nav=False):
         screen_width = width if width else content_width()
@@ -164,18 +166,18 @@ async def main(page: ft.Page):
         elif route == "scanner":
             view = scanner.live(state["camera"], state["camera_status"], capture_photo, close_scanner)
             page.add(page_wrapper(view, width=content_width()))
-elif route == "receipt_review":
-    view = scanner.review(
-        state["receipt_photo"],
-        state["receipt_items"],
-        state["receipt_message"],
-        add_receipt_item,
-        save_receipt,
-        retake_receipt,
-        close_scanner,
-        state.get("receipt_busy", False),
-    )
-    page.add(page_wrapper(view, width=content_width()))
+        elif route == "receipt_review":
+            view = scanner.review(
+                state["receipt_photo"],
+                state.get("receipt_items", []),
+                state["receipt_message"],
+                add_receipt_item,
+                save_receipt,
+                retake_receipt,
+                close_scanner,
+                state.get("receipt_busy", False),
+            )
+            page.add(page_wrapper(view, width=content_width()))
         elif route == "app":
             tab = state["tab"]
             if tab == "Home":
@@ -425,6 +427,13 @@ elif route == "receipt_review":
             modal=True,
             title=ft.Text("Semakan ringkas"),
             content=ft.Text(text),
+            actions=[
+                ft.TextButton("OK", on_click=lambda e: page.pop_dialog()),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.show_dialog(dialog)
+
     def open_scanner():
         camera = fcam.Camera(
             width=content_width() - 36,
@@ -476,6 +485,48 @@ elif route == "receipt_review":
             state["camera_status"].color = ft.Colors.ERROR
             state["camera_status"].update()
 
+    def add_receipt_item():
+        existing_description = (state.get("receipt_description").value or "") if state.get("receipt_description") else ""
+        existing_amount = (state.get("receipt_amount").value or "") if state.get("receipt_amount") else ""
+        existing_category = (state.get("receipt_category").value or "Makanan") if state.get("receipt_category") else "Makanan"
+
+        item_description = ft.TextField(label="Apa yang dibeli?", value=existing_description, hint_text="cth. makan tengah hari", border_radius=14)
+        item_amount = ft.TextField(label="Jumlah (RM)", value=existing_amount, prefix=ft.Text("RM "), keyboard_type=ft.KeyboardType.NUMBER, border_radius=14)
+        item_category = ft.Dropdown(
+            value=existing_category,
+            label="Kategori",
+            options=[ft.DropdownOption(text=item) for item in CATEGORY_OPTIONS],
+            border_radius=14,
+        )
+        error = ft.Text("", size=12, color=ft.Colors.ERROR)
+
+        async def save_item():
+            description = (item_description.value or "").strip()
+            amount = number(item_amount.value)
+            if not description or amount is None or amount <= 0:
+                error.value = "Masukkan keterangan dan jumlah yang melebihi RM 0."
+                page.update()
+                return
+            category = CATEGORY_OPTIONS.get(item_category.value, "Other")
+            state.setdefault("receipt_items", []).append({
+                "description": description,
+                "category": category,
+                "amount": amount,
+            })
+            page.pop_dialog()
+            render()
+
+        page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Tambah butiran transaksi"),
+            content=ft.Column([item_description, item_amount, item_category, error], tight=True, spacing=10, width=330),
+            actions=[
+                ft.TextButton("Batal", on_click=lambda e: page.pop_dialog()),
+                ft.Button(content=ft.Text("Tambah"), on_click=save_item, bgcolor=PRIMARY, color=ft.Colors.WHITE),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
+
     async def capture_photo():
         if not state["camera_ready"]:
             state["camera_status"].value = "Benarkan akses kamera dan tunggu pratonton bermula."
@@ -484,6 +535,7 @@ elif route == "receipt_review":
         try:
             state["receipt_photo"] = await state["camera"].take_picture()
             await state["camera"].pause_preview()
+            state["receipt_items"] = []
             state["receipt_description"] = ft.TextField(label="Apa yang dibeli?", hint_text="cth. makan tengah hari", border_radius=14)
             state["receipt_amount"] = ft.TextField(label="Jumlah (RM)", prefix=ft.Text("RM "), keyboard_type=ft.KeyboardType.NUMBER, border_radius=14)
             state["receipt_category"] = ft.Dropdown(
@@ -509,6 +561,7 @@ elif route == "receipt_review":
                 pass
         state["camera"] = None
         state["camera_ready"] = False
+        state["receipt_items"] = []
         state["route"] = "app"
         state["tab"] = "Transactions"
         render()
@@ -524,16 +577,28 @@ elif route == "receipt_review":
     async def save_receipt():
         description = (state["receipt_description"].value or "").strip()
         amount = number(state["receipt_amount"].value)
-        if not description or amount is None or amount <= 0:
-            state["receipt_message"].value = "Masukkan keterangan dan jumlah yang melebihi RM 0."
-            page.update()
-            return
-        category = CATEGORY_OPTIONS.get(state["receipt_category"].value, "Other")
-        state["transactions"].insert(0, {"description": description, "category": category, "date": "Sebentar tadi · imbasan", "amount": amount})
+        items = list(state.get("receipt_items") or [])
+        if not items:
+            items = [{
+                "description": description,
+                "amount": amount,
+                "category": CATEGORY_OPTIONS.get(state["receipt_category"].value, "Other"),
+            }]
+
+        for item in items:
+            item_description = (item.get("description") or "").strip()
+            item_amount = number(item.get("amount"))
+            if not item_description or item_amount is None or item_amount <= 0:
+                state["receipt_message"].value = "Masukkan keterangan dan jumlah yang melebihi RM 0."
+                page.update()
+                return
+            category = item.get("category") or "Other"
+            state["transactions"].insert(0, {"description": item_description, "category": category, "date": "Sebentar tadi · imbasan", "amount": item_amount})
         await persist_transactions()
         state["camera"] = None
         state["camera_ready"] = False
         state["receipt_photo"] = None
+        state["receipt_items"] = []
         state["route"] = "app"
         state["tab"] = "Transactions"
         render()
