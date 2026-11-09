@@ -426,7 +426,11 @@ async def main(page: ft.Page):
 
     def open_scanner():
         state["route"] = "scanner"
-        camera = fcam.Camera(width=content_width() - 36, height=320, preview_enabled=True)
+       camera = fcam.Camera(
+    width=content_width() - 36,
+    height=320,
+    preview_enabled=True,
+)
         state["camera"] = camera
         state["camera_ready"] = False
         state["camera_status"] = ft.Text("Meminta akses kamera…", size=13, color=MUTED)
