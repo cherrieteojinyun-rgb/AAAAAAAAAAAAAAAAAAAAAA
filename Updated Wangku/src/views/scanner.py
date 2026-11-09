@@ -166,3 +166,8 @@ def review(
         spacing=13,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
+            ),
+        ],
+        spacing=13,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
