@@ -434,23 +434,42 @@ async def main(page: ft.Page):
         render()
         asyncio.create_task(initialize_camera(camera))
 
-    async def initialize_camera(camera):
-        try:
-            cameras = await camera.get_available_cameras()
-            if not cameras:
-                raise RuntimeError("Kamera tidak tersedia pada peranti ini.")
-            back_camera = next((item for item in cameras if item.lens_direction == fcam.CameraLensDirection.BACK), cameras[0])
-            await camera.initialize(back_camera, resolution_preset=fcam.ResolutionPreset.MEDIUM)
-            state["camera_ready"] = True
-            state["camera_status"].value = "Kamera sedia. Letakkan resit di tengah dan ambil gambar."
-            state["camera_status"].color = ft.Colors.GREEN_700
-            state["camera_status"].update()
-        except Exception as error:
-            log.warning("Camera setup failed: %s", error)
-            state["camera_ready"] = False
-            state["camera_status"].value = "Kamera tidak tersedia. Semak kebenaran pelayar atau cuba telefon yang mempunyai kamera."
-            state["camera_status"].color = ft.Colors.ERROR
-            state["camera_status"].update()
+async def initialize_camera(camera):
+    try:
+        cameras = await camera.get_available_cameras()
+
+        if not cameras:
+            raise RuntimeError("No cameras detected by the browser.")
+
+        back_camera = next(
+            (
+                item for item in cameras
+                if item.lens_direction == fcam.CameraLensDirection.BACK
+            ),
+            cameras[0],
+        )
+
+        await camera.initialize(
+            back_camera,
+            resolution_preset=fcam.ResolutionPreset.MEDIUM,
+        )
+
+        state["camera_ready"] = True
+        state["camera_status"].value = (
+            "Kamera sedia. Letakkan resit di tengah dan ambil gambar."
+        )
+        state["camera_status"].color = ft.Colors.GREEN_700
+        state["camera_status"].update()
+
+    except Exception as error:
+        log.exception("Camera setup failed")
+
+        state["camera_ready"] = False
+        state["camera_status"].value = (
+            f"Kamera gagal dimulakan: {type(error).__name__}: {error}"
+        )
+        state["camera_status"].color = ft.Colors.ERROR
+        state["camera_status"].update()
 
     async def capture_photo():
         if not state["camera_ready"]:
