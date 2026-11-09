@@ -164,12 +164,18 @@ async def main(page: ft.Page):
         elif route == "scanner":
             view = scanner.live(state["camera"], state["camera_status"], capture_photo, close_scanner)
             page.add(page_wrapper(view, width=content_width()))
-        elif route == "receipt_review":
-            view = scanner.review(
-                state["receipt_photo"], state["receipt_description"], state["receipt_amount"],
-                state["receipt_category"], state["receipt_message"], save_receipt, retake_receipt, close_scanner,
-            )
-            page.add(page_wrapper(view, width=content_width()))
+elif route == "receipt_review":
+    view = scanner.review(
+        state["receipt_photo"],
+        state["receipt_items"],
+        state["receipt_message"],
+        add_receipt_item,
+        save_receipt,
+        retake_receipt,
+        close_scanner,
+        state.get("receipt_busy", False),
+    )
+    page.add(page_wrapper(view, width=content_width()))
         elif route == "app":
             tab = state["tab"]
             if tab == "Home":
